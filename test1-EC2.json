@@ -1,0 +1,328 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "AWS CloudFormation Template 3 EC2Instance With SecurityGroup",
+
+  "Parameters" : {
+    "KeyName": {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Default": "mumbainew",
+      "ConstraintDescription" : "mumbainew"
+    },
+    "ServiceName": {
+      "Type": "String",
+      "Default": "My CFT test Linux"
+   },
+    "InstanceType" : {
+      "Description" : "EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.micro"
+    },
+    "EC2Image": {
+      "Type": "String",
+      "Default": "ami-0eeb03e72075b9bcc"
+   },
+   "HostedZone" : {
+    "Type" : "String",
+    "Default" : "yugeshnaidutech.club"
+  },
+   "VpcId": {
+    "Type": "AWS::EC2::VPC::Id",
+    "Default": "vpc-07d04403f873472df"
+ },
+ "PublicSubnetA": {
+    "Type": "AWS::EC2::Subnet::Id",
+    "Default": "subnet-06163f89ab227072f"
+ }
+ 
+},
+  "Resources" : 
+  
+  {
+
+    "ec2sg" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+         "GroupDescription" : "Allow http to client host",
+        "VpcId" : {"Ref" : "VpcId"},
+
+             "SecurityGroupIngress" : [{
+                "IpProtocol" : "tcp",
+                "FromPort" : 22,
+                "ToPort" : 80,
+                "CidrIp" : "0.0.0.0/0"
+            }
+        ],
+
+        "Tags":[
+          {
+            "Key": "Name",
+            "Value": "ec2sg" 
+         }
+        ]
+      }
+        }, 
+     
+       "IngressRuleAllowALBSG": {
+          "Type": "AWS::EC2::SecurityGroupIngress",
+          "Properties": {
+            "Description": "IngressRule to attach ALB SG to EC2-SG",
+            "IpProtocol": "tcp",
+            "FromPort": 0,
+            "ToPort": 65535,
+            "SourceSecurityGroupId": {
+              "Fn::GetAtt": [
+                "ELBSecurityGroup",
+                "GroupId"
+              ]
+            },
+            "GroupId": {
+              "Fn::GetAtt": [
+                "ec2sg",
+                "GroupId"
+              ]
+            }
+          },
+          "DependsOn": [ "ELBSecurityGroup", "ec2sg" ]
+        },
+  
+    "EC2Instance1" : {
+      "Type" : "AWS::EC2::Instance",
+      "Properties" : {
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "KeyName" : { "Ref" : "KeyName" },
+        "ImageId" : "ami-0eeb03e72075b9bcc",
+        "IamInstanceProfile"       : "DLM-ROLE",
+        "NetworkInterfaces" : [{
+            "GroupSet"                 : [ {"Ref" : "ec2sg"}],
+            
+            "AssociatePublicIpAddress" : "true",
+            "DeviceIndex"              : "0",
+            "DeleteOnTermination"      : "true",
+            "SubnetId"                 : { "Ref" : "PublicSubnetA" }
+          }],
+          "Tags":[
+            {
+              "Key": "Name",
+              "Value": { "Ref" : "ServiceName" }
+           }
+          ],
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/xvda",
+            "Ebs": {
+              "VolumeType": "gp2",
+              "VolumeSize": "30",
+              "DeleteOnTermination":"false",
+              "Encrypted": "true"
+            }
+          }               
+       ]
+      }   
+    },
+
+    "EC2Instance2" : {
+        "Type" : "AWS::EC2::Instance",
+        "Properties" : {
+          "InstanceType" : { "Ref" : "InstanceType" },
+          "KeyName" : { "Ref" : "KeyName" },
+          "ImageId" : "ami-0eeb03e72075b9bcc",
+          "IamInstanceProfile"       : "DLM-ROLE",
+          "NetworkInterfaces" : [{
+            "GroupSet"                 : [{"Ref" : "ec2sg"}],
+            
+            "AssociatePublicIpAddress" : "true",
+            "DeviceIndex"              : "0",
+            "DeleteOnTermination"      : "true",
+            "SubnetId"                 : { "Ref" : "PublicSubnetA" }
+          }],
+          "Tags":[
+            {
+              "Key": "Name",
+              "Value": { "Ref" : "ServiceName" }
+           },
+            {
+              "Key": "RootVolumBackup",
+              "Value": "True"
+           }
+          ],
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/xvda",
+            "Ebs": {
+              "VolumeType": "gp2",
+              "VolumeSize": "40",
+              "DeleteOnTermination":"false",
+              "Encrypted": "true"
+            }
+          }  
+       ]
+         
+        }     
+      },
+      
+        "ELBSecurityGroup": {
+          "Type": "AWS::EC2::SecurityGroup",
+          "Properties": {
+              "GroupDescription": "SSH and Port 80",
+              "VpcId": "vpc-07d04403f873472df",
+              "SecurityGroupIngress": [
+                  {
+                      "IpProtocol": "tcp",
+                      "FromPort": 80,
+                      "ToPort": 80,
+                      "CidrIp": "0.0.0.0/0"
+                  }
+              ],
+              "Tags" : [
+                  {
+                    "Key": "Name",
+                    "Value": "Elb-sg"
+                 }
+              ]
+          }
+      },
+
+          
+
+      "EC2TargetGroup": {
+        "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+        "Properties": {
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckTimeoutSeconds": 15,
+            "HealthyThresholdCount": 5,
+            "Matcher": {
+                "HttpCode": "200"
+            },
+            "Name": "EC2TargetGroup",
+            "Port": 80,
+            "Protocol": "HTTP",
+            "TargetGroupAttributes": [
+                {
+                    "Key": "deregistration_delay.timeout_seconds",
+                    "Value": "20"
+                }
+            ],
+            "Targets": [
+                {
+                    "Id": {
+                        "Ref": "EC2Instance1"
+                    },
+                    "Port": 80
+                },
+
+                {
+                  "Id": {
+                      "Ref": "EC2Instance2"
+                  },
+                  "Port": 80
+              }
+
+            ],
+            "UnhealthyThresholdCount": 3,
+            "VpcId": "vpc-07d04403f873472df",
+            "Tags": [
+                {
+                    "Key": "Name",
+                    "Value": "EC2TargetGroup"
+                },
+                {
+                    "Key": "Port",
+                    "Value": 80
+                }
+            ]
+        }
+    },
+    "ALBListener": {
+        "Type": "AWS::ElasticLoadBalancingV2::Listener",
+        "Properties": {
+            "DefaultActions": [
+                {
+                    "Type": "forward",
+                    "TargetGroupArn": {
+                        "Ref": "EC2TargetGroup"
+                    }
+                }
+            ],
+            "LoadBalancerArn": {
+                "Ref": "ApplicationLoadBalancer"
+            },
+            "Port": 80,
+            "Protocol": "HTTP"
+        }
+    },
+    "ApplicationLoadBalancer": {
+        "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+        "Properties": {
+            "Name" : "MyAlb",
+            "Scheme": "internal",
+            "Subnets": ["subnet-06163f89ab227072f","subnet-059d3d62874240fbc"],
+            "SecurityGroups": [
+                {
+                    "Ref": "ELBSecurityGroup"
+                }
+            ],
+            "Tags" : [ {
+              "Key": "Name",
+              "Value": "MyAlb"
+          }]
+        }
+    },
+
+    "MyDNSRecord" : {
+      "Type" : "AWS::Route53::RecordSet",
+      "Properties" : {
+        "HostedZoneName" : { "Fn::Join" : [ "", [{"Ref" : "HostedZone"}, "." ]]},
+        "Comment" : "CNAME redirect to aws.amazon.com.",
+        "AliasTarget": {
+          "DNSName": { "Fn::GetAtt" : [ "ApplicationLoadBalancer", "DNSName" ] },
+          "HostedZoneId" : { "Fn::GetAtt" : [ "ApplicationLoadBalancer", "CanonicalHostedZoneID" ] }
+     },
+        "Name" : { "Fn::Join" : [ "", [{"Ref" : "AWS::StackName"}, ".", {"Ref" : "AWS::Region"}, ".", {"Ref" : "HostedZone"}, "."]]},
+        "Type" : "A"}
+    },
+    "BasicLifecyclePolicy": {
+      "Type": "AWS::DLM::LifecyclePolicy",
+      "Properties": {
+          "Description": "Lifecycle Policy using CloudFormation",
+          "State": "ENABLED",
+          "ExecutionRoleArn": "arn:aws:iam::235561140523:role/DLM-ROLE",
+          "PolicyDetails": {
+              "ResourceTypes": [
+                  "VOLUME"
+              ],
+              "TargetTags": [
+            {
+              "Key": "RootVolumBackup",
+              "Value": "True"
+           }
+              ],
+              "Schedules": [
+                  {
+                      "Name": "Daily Snapshots",
+                      "TagsToAdd": [
+                          {
+                              "Key": "Type",
+                              "Value": "DailySnapshot"
+                          }
+                      ],
+                      "CreateRule": {
+                          "Interval": 1,
+                          "IntervalUnit": "HOURS",
+                          "Times": [
+                              "15:50"
+                          ]
+                      },
+                      "RetainRule": {
+                          "Count": 2
+                      },
+                      "CopyTags": true
+                  }
+              ]
+          }
+      }
+  }  
+  }
+}
